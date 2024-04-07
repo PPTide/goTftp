@@ -61,7 +61,9 @@ func NewTftpReader(b []byte) *TftpReader {
 	return (*TftpReader)(bytes.NewReader(b))
 }
 
-func main() { //https://www.geeksforgeeks.org/what-is-tftp-trivial-file-transfer-protocol/
+// https://datatracker.ietf.org/doc/html/rfc1350
+// https://www.geeksforgeeks.org/what-is-tftp-trivial-file-transfer-protocol/
+func main() {
 	flag.Parse()
 
 	if (*folder)[len(*folder)-1] != '/' {
@@ -100,6 +102,94 @@ func main() { //https://www.geeksforgeeks.org/what-is-tftp-trivial-file-transfer
 			continue
 		}
 		switch msgType {
+		case 1: // RRQ (Read request)
+			fmt.Println("Read Request: ")
+
+			fileName, err := msg.ReadNullTerminatedString()
+			if err != nil {
+				println("Error reading fileName")
+				continue
+			}
+
+			fmt.Printf("Filename: %s\n", fileName)
+
+			mode, err := msg.ReadNullTerminatedString()
+			if err != nil {
+				println("Error reading mode")
+				continue
+			}
+
+			fmt.Printf("Mode: %s\n", mode)
+
+			if mode != "octet" {
+				fmt.Printf("Unsopported Mode: %s\n", fileName)
+			}
+
+			// the rest of the message is unsupported info
+
+			file, err := os.Open(*folder + fileName)
+			if err != nil {
+				println("Error opening file")
+				continue
+			}
+
+			blockNumber := 1
+
+			for {
+				send := make([]byte, 512)
+				n, err := file.Read(send)
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					println("Error reading file")
+					continue
+				}
+
+				send = send[:n]
+				send = append([]byte{0, 3, byte(blockNumber >> 8), byte(blockNumber)}, send...)
+
+				_, err = udpServer.WriteTo(send, addr)
+				if err != nil {
+					println("Error sending data")
+					continue
+				}
+
+				// wait for ack
+				buf := make([]byte, 1024)
+				n, _, err = udpServer.ReadFrom(buf)
+				if err != nil {
+					println("Error reading")
+					continue
+				}
+
+				buf = buf[:n]
+				msg := NewTftpReader(buf)
+				msgType, err := msg.ReadInt16()
+				if err != nil {
+					println("Error reading msgType")
+					continue
+				}
+
+				if msgType != 4 {
+					println("Expected ack")
+					continue
+				}
+
+				ackBlockNumber, err := msg.ReadInt16()
+				if err != nil {
+					println("Error reading ackBlockNumber")
+					continue
+				}
+
+				if ackBlockNumber != blockNumber {
+					println("Expected ackBlockNumber to be", blockNumber, "but got", ackBlockNumber)
+					continue
+				}
+				blockNumber++
+			}
+			println("End of transmission")
+
 		case 2: // WRQ (Write request)
 			if transmissionInProgress {
 				fmt.Println("Transmission already in progress")
