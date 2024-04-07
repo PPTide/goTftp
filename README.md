@@ -1,7 +1,7 @@
 # goTFTP
 Very simple TFTP server written in Go. 
 If there are any problems, please open an issue. 
-This was hacked together in one evening, so it's not perfect.
+This was hacked together in one evening, so expect mistakes and bad code xD.
 
 ## Usage
 ```
